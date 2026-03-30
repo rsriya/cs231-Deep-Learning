@@ -290,16 +290,20 @@ class FullyConnectedNet(object):
         # self.bn_params[1] to the forward pass for the second batch normalization #
         # layer, etc.                                                              #
         ############################################################################
-        if self.normalization == "batchnorm":
-            for i in range(self.num_layers-1):
-                a, fc_cache = affine_forward(X, self.params[f'W{i+1}'], self.params[f'b{i+1}'])
-                b, bn_cache = batchnorm_forward(a, self.params[f'gamma{i+1}'], self.params[f'beta{i+1}'], self.bn_params[i])
-                X, relu_cache = relu_forward(b)
-                cache[i] = (fc_cache, relu_cache, bn_cache)
-        else:
-            for i in range(self.num_layers-1):
-                X, cache[i] = affine_relu_forward(X, self.params[f'W{i+1}'], self.params[f'b{i+1}'])
-        scores, cache[i+1] = affine_forward(X, self.params[f'W{i+2}'], self.params[f'b{i+2}'])
+        for i in range(self.num_layers-1):
+            a, fc_cache = affine_forward(X, self.params[f'W{i+1}'], self.params[f'b{i+1}'])
+            b, bn_cache = batchnorm_forward(a, self.params[f'gamma{i+1}'], self.params[f'beta{i+1}'], self.bn_params[i]) if self.normalization == "batchnorm" else (a, None)
+            X, relu_cache = relu_forward(b)      
+            if self.use_dropout:
+                X, do_cache = dropout_forward(X, self.dropout_param)
+            cache[i] = {
+                'fc': fc_cache,
+                'bn': bn_cache if self.normalization == "batchnorm" else None,
+                'relu': relu_cache,
+                'dropout': do_cache if self.use_dropout else None
+            }   
+        scores, fc_cache = affine_forward(X, self.params[f'W{i+2}'], self.params[f'b{i+2}'])
+        cache[i+1] = {'fc': fc_cache}
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -325,16 +329,17 @@ class FullyConnectedNet(object):
         loss, dscore = softmax_loss(scores, y)
         for i in range(self.num_layers):
             loss += 0.5 * self.reg * np.sum(self.params[f'W{i+1}']**2)  
-        dX, grads[f'W{i+1}'], grads[f'b{i+1}'] = affine_backward(dscore, cache[i])
-        if self.normalization == "batchnorm":
-            for i in range(1, self.num_layers):
-                fc_cache, relu_cache, bn_cache = cache[self.num_layers-i-1]
-                da = relu_backward(dX, relu_cache)
-                db, grads[f'gamma{self.num_layers-i}'], grads[f'beta{self.num_layers-i}']  = batchnorm_backward_alt(da, bn_cache)
-                dX, grads[f'W{self.num_layers-i}'], grads[f'b{self.num_layers-i}'] = affine_backward(db, fc_cache)
-        else:
-            for i in range(1, self.num_layers):
-                dX, grads[f'W{self.num_layers-i}'], grads[f'b{self.num_layers-i}'] = affine_relu_backward(dX, cache[self.num_layers-i-1])
+        dX, grads[f'W{i+1}'], grads[f'b{i+1}'] = affine_backward(dscore, cache[i]['fc'])
+        for i in range(1, self.num_layers):
+            layer_cache = cache[self.num_layers-i-1]
+            if self.use_dropout:
+                dX = dropout_backward(dX, layer_cache['dropout'])
+            da = relu_backward(dX, layer_cache['relu'])
+            if self.normalization == "batchnorm":
+                db, grads[f'gamma{self.num_layers-i}'], grads[f'beta{self.num_layers-i}'] = batchnorm_backward_alt(da, layer_cache['bn'])  
+            else:
+                db = da           
+            dX, grads[f'W{self.num_layers-i}'], grads[f'b{self.num_layers-i}'] = affine_backward(db, layer_cache['fc'])
         for i in range(self.num_layers):
             grads[f'W{i+1}'] += self.reg*self.params[f'W{i+1}']
         ############################################################################
