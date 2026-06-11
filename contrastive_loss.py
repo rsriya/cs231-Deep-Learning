@@ -117,7 +117,6 @@ def compute_sim_matrix(out):
     ##############################################################################
     return sim_matrix
 
-
 def simclr_loss_vectorized(out_left, out_right, tau, device='cuda'):
     """Compute the contrastive loss L over a batch (vectorized version). No loops are allowed.
     
@@ -137,7 +136,7 @@ def simclr_loss_vectorized(out_left, out_right, tau, device='cuda'):
     
     # Step 1: Use sim_matrix to compute the denominator value for all augmented samples.
     # Hint: Compute e^{sim / tau} and store into exponential, which should have shape 2N x 2N.
-    exponential = np.exp(sim_matrix / tau)
+    exponential = (sim_matrix / tau).exp()
     
     # This binary mask zeros out terms where k=i.
     mask = (torch.ones_like(exponential, device=device) - torch.eye(2 * N, device=device)).to(device).bool()
@@ -152,11 +151,11 @@ def simclr_loss_vectorized(out_left, out_right, tau, device='cuda'):
     # Option 2: Use sim_positive_pairs().
     pos_pairs = sim_positive_pairs(out_left, out_right)
     # Step 3: Compute the numerator value for all augmented samples.
-    numerator = np.exp(pos_pairs / tau)
+    numerator = (pos_pairs / tau).exp()
     numerator_pair = torch.cat([numerator, numerator], dim=0)
     
     # Step 4: Now that you have the numerator and denominator for all augmented samples, compute the total loss.
-    loss = -np.log(numerator_pair/denom).sum()/(2*N)
+    loss = -(numerator_pair/denom).log().sum()/(2*N)
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
